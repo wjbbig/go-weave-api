@@ -102,6 +102,11 @@ func (w *Weave) Launch() error {
 	if err := w.cni.installCNIPlugin(); err != nil {
 		return err
 	}
+	// validate brige type
+	if err := w.validateBridgeType(); err != nil {
+		return err
+	}
+
 	// 2. create weavedb volume
 	if err := w.createWeaveVolumeFrom(); err != nil {
 		return err
@@ -117,10 +122,19 @@ func (w *Weave) Launch() error {
 }
 
 func (w *Weave) Stop() error {
+	result, err := w.runWeaveExec("remove-plugin-network", "weave")
+	if err != nil {
+		return err
+	}
+	if string(result) != "" {
+		return errors.New(string(result))
+	}
+
 	timeout := time.Minute
 	if err := w.dockerCli.ContainerStop(context.Background(), w.containerID, &timeout); err != nil {
 		return err
 	}
+
 	return nil
 }
 
