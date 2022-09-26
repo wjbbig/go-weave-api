@@ -31,6 +31,28 @@ func getContainerStateByName(cli *docker.Client, containerName string) (string, 
 	return c.State.Status, nil
 }
 
+func getContainerWeaveIP(cli *docker.Client, containerName string) (string, error) {
+	c, err := cli.ContainerInspect(context.Background(), containerName)
+	if err != nil {
+		return "", err
+	}
+	for _, network := range c.NetworkSettings.Networks {
+		if network.NetworkID == "weave" {
+			return network.IPAddress, nil
+		}
+	}
+
+	return "", errors.Errorf("can't find weave bridge of container %s", containerName)
+}
+
+func getContainerIdByName(cli *docker.Client, containerName string) (string, error) {
+	c, err := cli.ContainerInspect(context.Background(), containerName)
+	if err != nil {
+		return "", err
+	}
+	return c.ID, nil
+}
+
 func createVolumeContainer(cli *docker.Client, containerName, image, label string, bindMounts ...string) error {
 	c, err := cli.ContainerInspect(context.Background(), containerName)
 	if err != nil {

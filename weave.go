@@ -10,6 +10,7 @@ import (
 	docker "github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -283,12 +284,78 @@ func (w *Weave) createWeaveVolumeFrom() error {
 	return nil
 }
 
-func (w *Weave) AddDNS() error {
+// ====================DNS Helpers=====================
+
+func (w *Weave) AddContainerDNS(containerId, fqdn string) error {
 	if w.dns.Disabled {
 		return errors.New("weaveDNS disabled")
 	}
+	ip, err := getContainerWeaveIP(w.dockerCli, containerId)
+	if err != nil {
+		return err
+	}
+	id, err := getContainerIdByName(w.dockerCli, containerId)
+	if err != nil {
+		return err
+	}
+	return w.dns.addWeaveDNS(id, ip, fqdn, false)
+}
 
-	return nil
+func (w *Weave) AddExternalDNS(ip, fqdn string) error {
+	return w.dns.addWeaveDNS("", ip, fqdn, true)
+}
+
+func (w *Weave) LookupDNS(hostname string) ([]string, error) {
+	// find dns from weave router,
+	// no dig command here
+	var ips []string
+	if !w.dns.Disabled {
+		status, err := w.Status("dns")
+		if err != nil {
+			return nil, err
+		}
+		for _, dn := range status.DNS {
+			if hostname == dn.Hostname {
+				ips = append(ips, hostname)
+			} else {
+				before, _, found := strings.Cut(hostname, w.dns.Search)
+				if found {
+					if before == dn.Hostname {
+						ips = append(ips, hostname)
+					}
+				}
+			}
+		}
+	}
+	result, err := net.LookupIP(hostname)
+	// return empty slice, not the error
+	if err != nil {
+		return ips, nil
+	}
+	for _, ip := range result {
+		ips = append(ips, ip.String())
+	}
+	return ips, nil
+}
+
+func (w *Weave) RemoveContainerDNS(containerId string, fqdn ...string) error {
+	var f string
+	if len(fqdn) != 0 {
+		f = fqdn[0]
+	}
+	ip, err := getContainerWeaveIP(w.dockerCli, containerId)
+	if err != nil {
+		return err
+	}
+	id, err := getContainerIdByName(w.dockerCli, containerId)
+	if err != nil {
+		return err
+	}
+	return w.dns.removeWeaveDNS(ip, id, f, false)
+}
+
+func (w *Weave) RemoveExternalDNS(ip, fqdn string) error {
+	return w.dns.removeWeaveDNS("", ip, fqdn, true)
 }
 
 func (w *Weave) RemovePeer(peers ...string) error {
@@ -303,14 +370,6 @@ func (w *Weave) RemovePeer(peers ...string) error {
 		fmt.Println(string(resp))
 	}
 
-	return nil
-}
-
-func (w *Weave) LookupDNS(hostname string) (string, error) {
-	return "", nil
-}
-
-func (w *Weave) DNSRemove(hostname string) error {
 	return nil
 }
 

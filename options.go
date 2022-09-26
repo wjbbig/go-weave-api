@@ -65,7 +65,8 @@ func WithVersion(version string) Option {
 func WithDNSAddress(address string) Option {
 	return func(weave *Weave) {
 		if weave.dns == nil {
-			weave.dns = NewDNSServer(address, "weave.local",false)
+			weave.dns = NewDNSServer(address, "weave.local.", false)
+			weave.dns.weave = weave
 			return
 		}
 		weave.dns.Address = address

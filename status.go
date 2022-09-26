@@ -7,7 +7,11 @@ import (
 )
 
 type Status struct {
-	DNS []*DNSStatus
+	DNS []DNSStatus
+}
+
+type Overview struct {
+	Version string
 }
 
 type DNSStatus struct {
@@ -51,28 +55,34 @@ func (w *Weave) Status(subArgs ...string) (*Status, error) {
 	return status, nil
 }
 
-func parseDNSStatus(data []byte) []*DNSStatus {
+func parseDNSStatus(data []byte) []DNSStatus {
 	dnsSlice := strings.Split(string(data), "\n")
 	if len(dnsSlice) == 0 {
 		return nil
 	}
-	var dnsStatus []*DNSStatus
+	var dnsStatus []DNSStatus
 	for _, s := range dnsSlice {
+		if s == "" {
+			continue
+		}
 		dnsArgs := strings.Split(s, " ")
-		for i, arg := range dnsArgs {
-			if arg == "" || arg == " " {
+
+		for i := 0; i < len(dnsArgs); i++ {
+		REMOVESPACE:
+			if dnsArgs[i] == "" || dnsArgs[i] == " " {
 				dnsArgs = removeSliceElement(dnsArgs, i)
+				goto REMOVESPACE
 			}
 		}
-		if len(dnsArgs) > 0 {
-			status := &DNSStatus{
-				Hostname:    strings.TrimSpace(dnsArgs[0]),
-				Address:     strings.TrimSpace(dnsArgs[1]),
-				ContainerId: strings.TrimSpace(dnsArgs[2]),
-				Origin:      strings.TrimSpace(dnsArgs[3]),
-			}
-			dnsStatus = append(dnsStatus, status)
+
+		status := DNSStatus{
+			Hostname:    strings.TrimSpace(dnsArgs[0]),
+			Address:     strings.TrimSpace(dnsArgs[1]),
+			ContainerId: strings.TrimSpace(dnsArgs[2]),
+			Origin:      strings.TrimSpace(dnsArgs[3]),
 		}
+		dnsStatus = append(dnsStatus, status)
+
 	}
 	return dnsStatus
 }

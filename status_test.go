@@ -6,7 +6,7 @@ import (
 )
 
 func TestWeave_Status(t *testing.T) {
-	w := &Weave{address: "127.0.0.1", httpPort: 6784}
+	w := &Weave{address: "192.168.0.111", httpPort: 6784}
 	status, err := w.Status()
 	require.NoError(t, err)
 	t.Log(status)

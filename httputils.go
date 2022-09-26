@@ -12,7 +12,7 @@ func callWeave(method, url string, body io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	cli := &http.Client{}
 	resp, err := cli.Do(req)
 	if err != nil {
@@ -20,7 +20,7 @@ func callWeave(method, url string, body io.Reader) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, errors.Errorf("http call with status code %d", resp.StatusCode)
 	}
 
