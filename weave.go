@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -25,28 +26,29 @@ const (
 )
 
 type Weave struct {
-	dockerCli     *docker.Client
-	cni           *CNIBuilder
-	dns           *DNSServer
-	clientTLS     *tlsCerts
-	containerID   string
-	address       string
-	httpPort      int
-	statusPort    int
-	port          int
-	password      string
-	local         bool
-	version       string
-	tlsVerify     bool
-	ipRange       string
-	dockerHost    string
-	nickname      string
-	restartPolicy string
-	enablePlugin  bool
-	enableProxy   bool
-	discovery     bool
-	disableFastDP bool
-	peers         []string
+	dockerCli            *docker.Client
+	cni                  *CNIBuilder
+	dns                  *DNSServer
+	clientTLS            *tlsCerts
+	containerID          string
+	address              string
+	httpPort             int
+	statusPort           int
+	port                 int
+	password             string
+	local                bool
+	version              string
+	tlsVerify            bool
+	ipRange              string
+	ipAllocDefaultSubnet string
+	dockerHost           string
+	nickname             string
+	restartPolicy        string
+	enablePlugin         bool
+	enableProxy          bool
+	discovery            bool
+	disableFastDP        bool
+	peers                []string
 }
 
 type tlsCerts struct {
@@ -98,6 +100,8 @@ func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 	return w, nil
 }
 
+// ==================== network helper =====================
+
 func (w *Weave) Launch() error {
 	// 1. install cni plugin
 	if err := w.cni.installCNIPlugin(); err != nil {
@@ -139,7 +143,30 @@ func (w *Weave) Stop() error {
 	return nil
 }
 
-func (w *Weave) Connect() error {
+func (w *Weave) Connect(replace bool, peer ...string) error {
+	values := url.Values{
+		"peer": peer,
+	}
+	values.Add("replace", strconv.FormatBool(replace))
+	_, err := callWeave(http.MethodPost, "/connect", bytes.NewReader([]byte(values.Encode())))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Weave) Forget(peer ...string) error {
+	values := url.Values{"peer": peer}
+	_, err := callWeave(http.MethodPost, "/forget", bytes.NewReader([]byte(values.Encode())))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Weave) Expose() error {
 	return nil
 }
 
@@ -371,6 +398,11 @@ func (w *Weave) RemovePeer(peers ...string) error {
 	}
 
 	return nil
+}
+
+func (w *Weave) Prime() error {
+	_, err := callWeave(http.MethodGet, "/ring", nil)
+	return err
 }
 
 func (w *Weave) checkOverlap(ipRange, bridge string) error {
