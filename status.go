@@ -40,8 +40,8 @@ func (w *Weave) Status(subArgs ...string) (*Status, error) {
 	switch subStatus {
 	case "dns":
 		status.DNS = parseDNSStatus(statusBytes)
-	case "collections":
-		parseCollectionStatus(statusBytes)
+	case "connections":
+		parseConnectionsStatus(statusBytes)
 	case "peers":
 
 	case "targets":
@@ -87,6 +87,7 @@ func parseDNSStatus(data []byte) []DNSStatus {
 	return dnsStatus
 }
 
-func parseCollectionStatus(data []byte) string {
+func parseConnectionsStatus(data []byte) string {
+
 	return ""
 }

@@ -50,6 +50,12 @@ func WithIPRange(ipRange string) Option {
 	}
 }
 
+func WithIpAllocDefaultSubnet(ipRange string) Option {
+	return func(weave *Weave) {
+		weave.ipAllocDefaultSubnet = ipRange
+	}
+}
+
 func WithPort(port int) Option {
 	return func(weave *Weave) {
 		weave.port = port
