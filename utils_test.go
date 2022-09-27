@@ -32,6 +32,6 @@ func TestGetContainerStateByName(t *testing.T) {
 }
 
 func TestRandString(t *testing.T) {
-	s := RandString()
+	s := randString()
 	t.Log(s)
 }

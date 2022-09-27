@@ -26,10 +26,10 @@ func WithPassword(password string) Option {
 	}
 }
 
-func WithDockerHost(host string) Option {
+func WithDockerPort(port int) Option {
 	return func(weave *Weave) {
 		weave.local = false
-		weave.dockerHost = host
+		weave.dockerPort = port
 	}
 }
 

@@ -41,7 +41,7 @@ type Weave struct {
 	tlsVerify            bool
 	ipRange              string
 	ipAllocDefaultSubnet string
-	dockerHost           string
+	dockerPort           int
 	nickname             string
 	restartPolicy        string
 	enablePlugin         bool
@@ -58,7 +58,7 @@ type tlsCerts struct {
 }
 
 func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
-	nickname := RandString()
+	nickname := randString()
 	w := &Weave{
 		address:       address,
 		port:          weavePort,
@@ -77,10 +77,13 @@ func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 	}
 	// create docker client
 	var dopts []docker.Opt
-	if w.local {
+	if w.local && localhost(address) {
 		dopts = append(dopts, docker.FromEnv)
 	} else {
-		dopts = append(dopts, docker.WithHost(w.dockerHost))
+		if w.dockerPort == 0 {
+			return nil, errors.New("the docker port is required when the address is not local")
+		}
+		dopts = append(dopts, docker.WithHost(fmt.Sprintf("tcp://%s:%d", address, w.dockerPort)))
 		if w.tlsVerify {
 			dopts = append(dopts, docker.WithTLSClientConfig(w.clientTLS.cacertPath,
 				w.clientTLS.certPath, w.clientTLS.keyPath))
@@ -144,21 +147,21 @@ func (w *Weave) Stop() error {
 }
 
 func (w *Weave) Connect(replace bool, peer ...string) error {
-	values := url.Values{
-		"peer": peer,
-	}
+	values := url.Values{"peer": peer}
 	values.Add("replace", strconv.FormatBool(replace))
-	_, err := callWeave(http.MethodPost, "/connect", bytes.NewReader([]byte(values.Encode())))
+	result, err := callWeave(http.MethodPost, fmt.Sprintf("http://%s:%d/connect", w.address, w.httpPort),
+		strings.NewReader(values.Encode()))
 	if err != nil {
 		return err
 	}
-
+	fmt.Println(string(result))
 	return nil
 }
 
 func (w *Weave) Forget(peer ...string) error {
 	values := url.Values{"peer": peer}
-	_, err := callWeave(http.MethodPost, "/forget", bytes.NewReader([]byte(values.Encode())))
+	_, err := callWeave(http.MethodPost, fmt.Sprintf("http://%s:%d/forget", w.address, w.httpPort),
+		strings.NewReader(values.Encode()))
 	if err != nil {
 		return err
 	}
@@ -223,7 +226,13 @@ func (w *Weave) createWeaveContainer() (string, error) {
 		containerCmds = append(containerCmds, "--proxy")
 	}
 	if w.dns.Disabled {
-		containerCmds = append(containerCmds, "--without-dns")
+		containerCmds = append(containerCmds, "--no-dns")
+	}
+	if !w.discovery {
+		containerCmds = append(containerCmds, "--no-discovery")
+	}
+	if w.ipAllocDefaultSubnet != "" {
+
 	}
 	if w.tlsVerify {
 		containerCmds = append(containerCmds, "--tlsverify",

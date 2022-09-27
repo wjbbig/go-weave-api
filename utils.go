@@ -8,6 +8,7 @@ import (
 	docker "github.com/docker/docker/client"
 	"github.com/pkg/errors"
 	"math/rand"
+	"net"
 	"strings"
 	"time"
 )
@@ -79,9 +80,15 @@ func createVolumeContainer(cli *docker.Client, containerName, image, label strin
 	return nil
 }
 
-func RandString() string {
+func randString() string {
 	rand.Seed(time.Now().UnixNano())
 	b := make([]byte, 6)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func localhost(host string) bool {
+	ip := net.ParseIP(host)
+	ip.IsLoopback()
+	return host == "127.0.0.1" || host == "localhost"
 }

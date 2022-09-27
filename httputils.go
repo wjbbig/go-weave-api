@@ -12,15 +12,17 @@ func callWeave(method, url string, body io.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	cli := &http.Client{}
-	resp, err := cli.Do(req)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < http.StatusOK && resp.StatusCode >= http.StatusMultipleChoices {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return nil, errors.Errorf("http call with status code %d", resp.StatusCode)
 	}
 

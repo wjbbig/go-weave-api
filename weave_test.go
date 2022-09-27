@@ -50,7 +50,7 @@ func TestCreateNewWeave(t *testing.T) {
 	require.NoError(t, err)
 
 	node, err := NewWeaveNode("192.168.0.112", WithDNSAddress("172.17.0.1:53"),
-		WithProxy(), WithPlugin(), WithNickname(hostname), WithDockerHost("tcp://192.168.0.112:2375"))
+		WithProxy(), WithPlugin(), WithNickname(hostname), WithDockerPort(2375))
 	require.NoError(t, err)
 
 	err = node.Launch()
@@ -65,4 +65,16 @@ func TestCreateVolumeFrom(t *testing.T) {
 		fmt.Sprintf("weaveworks/weavedb:%s", "latest"), "weavevolumes",
 		"/weavedb")
 	require.NoError(t, err)
+}
+
+func TestWeave_ConnectAndForget(t *testing.T) {
+	w := &Weave{address: "192.168.0.111", httpPort: 6784}
+
+	err := w.Connect(false, "192.168.0.112")
+	require.NoError(t, err)
+	err = w.Forget("192.168.0.112")
+	require.NoError(t, err)
+	err = w.Connect(true, "192.168.0.113")
+	require.NoError(t, err)
+
 }
