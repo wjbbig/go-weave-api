@@ -8,6 +8,18 @@ func WithPlugin() Option {
 	}
 }
 
+func WithLogLevel(level string) Option {
+	return func(weave *Weave) {
+		weave.logLevel = level
+	}
+}
+
+func WithToken(token string) Option {
+	return func(weave *Weave) {
+		weave.token = token
+	}
+}
+
 func WithProxy() Option {
 	return func(weave *Weave) {
 		weave.enableProxy = true
@@ -98,5 +110,11 @@ func NoDNS() Option {
 			return
 		}
 		weave.dns.Disabled = true
+	}
+}
+
+func NoMulticastRoute() Option {
+	return func(weave *Weave) {
+		weave.NoMultiRouter = true
 	}
 }

@@ -89,6 +89,6 @@ func randString() string {
 
 func localhost(host string) bool {
 	ip := net.ParseIP(host)
-	ip.IsLoopback()
-	return host == "127.0.0.1" || host == "localhost"
+	return ip.IsLoopback()
+	//return host == "127.0.0.1" || host == "localhost"
 }

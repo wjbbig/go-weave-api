@@ -48,6 +48,9 @@ type Weave struct {
 	enableProxy          bool
 	discovery            bool
 	disableFastDP        bool
+	NoMultiRouter        bool
+	logLevel             string
+	token                string
 	peers                []string
 }
 
@@ -66,10 +69,11 @@ func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 		statusPort:    weaveStatusPort,
 		version:       defaultWeaveVersion,
 		ipRange:       "10.32.0.0/12",
-		local:         true,
+		local:         localhost(address),
 		nickname:      nickname,
 		restartPolicy: "always",
 		discovery:     true,
+		logLevel:      "info",
 	}
 
 	for _, opt := range opts {
@@ -142,8 +146,8 @@ func (w *Weave) Stop() error {
 	if err := w.dockerCli.ContainerStop(context.Background(), w.containerID, &timeout); err != nil {
 		return err
 	}
-
-	return nil
+	_, err = w.runRemoteCmdWithContainer("conntrack", "-D", "-p", "udp", "--dport", strconv.Itoa(w.port))
+	return err
 }
 
 func (w *Weave) Connect(replace bool, peer ...string) error {
@@ -169,10 +173,6 @@ func (w *Weave) Forget(peer ...string) error {
 	return nil
 }
 
-func (w *Weave) Expose() error {
-	return nil
-}
-
 func (w *Weave) startWeaveContainer() error {
 	if err := w.dockerCli.ContainerStart(context.Background(), w.containerID, types.ContainerStartOptions{}); err != nil {
 		return err
@@ -189,8 +189,8 @@ func (w *Weave) startWeaveContainer() error {
 }
 
 func (w *Weave) createWeaveContainer() (string, error) {
-	httpAddr := fmt.Sprintf("127.0.0.1:%d", w.httpPort)
-	statusAddr := fmt.Sprintf("127.0.0.1:%d", w.statusPort)
+	httpAddr := fmt.Sprintf("0.0.0.0:%d", w.httpPort)
+	statusAddr := fmt.Sprintf("0.0.0.0:%d", w.statusPort)
 
 	var containerCmds []string
 	var containerMounts []mount.Mount
@@ -232,7 +232,10 @@ func (w *Weave) createWeaveContainer() (string, error) {
 		containerCmds = append(containerCmds, "--no-discovery")
 	}
 	if w.ipAllocDefaultSubnet != "" {
-
+		containerCmds = append(containerCmds, "--ipalloc-default-subnet", w.ipAllocDefaultSubnet)
+	}
+	if w.NoMultiRouter {
+		containerCmds = append(containerCmds, "--no-multicast-route")
 	}
 	if w.tlsVerify {
 		containerCmds = append(containerCmds, "--tlsverify",
@@ -454,10 +457,20 @@ func (w *Weave) validateBridgeType() error {
 }
 
 func (w *Weave) runWeaveExec(cmd ...string) ([]byte, error) {
+	execCmd := []string{"/usr/bin/weaveutil"}
+	execCmd = append(execCmd, cmd...)
+	return w.createWeaveExecContainer(execCmd...)
+}
+
+// runRemoteCmdWithContainer uses to run iptables, conntrack ...
+func (w *Weave) runRemoteCmdWithContainer(cmd ...string) ([]byte, error) {
+	return w.createWeaveExecContainer(cmd...)
+}
+
+func (w *Weave) createWeaveExecContainer(cmd ...string) ([]byte, error) {
 	resp, err := w.dockerCli.ContainerCreate(context.Background(), &container.Config{
-		Entrypoint: []string{"/usr/bin/weaveutil"},
+		Entrypoint: cmd,
 		Image:      fmt.Sprintf("weaveworks/weaveexec:%s", w.version),
-		Cmd:        cmd,
 	}, &container.HostConfig{
 		Privileged:  true,
 		NetworkMode: "host",
