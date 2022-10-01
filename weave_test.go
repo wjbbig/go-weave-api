@@ -78,3 +78,14 @@ func TestWeave_ConnectAndForget(t *testing.T) {
 	require.NoError(t, err)
 
 }
+
+func TestWeave_LookupDNS(t *testing.T) {
+	w, err := NewWeaveNode("127.0.0.1", WithDNSAddress("10.17.0.1:53"))
+	require.NoError(t, err)
+	defer w.Close()
+
+	result, err := w.LookupDNS("whoami")
+	require.NoError(t, err)
+
+	t.Log(result)
+}

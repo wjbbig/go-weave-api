@@ -3,6 +3,7 @@ package go_weave_api
 import (
 	docker "github.com/docker/docker/client"
 	"github.com/stretchr/testify/require"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,26 @@ func TestGetContainerStateByName(t *testing.T) {
 	state, err := getContainerStateByName(cli, containerName)
 	require.NoError(t, err)
 	require.Equal(t, "created", state)
+}
+
+func TestGetContainerIdByName(t *testing.T) {
+	cli, err := docker.NewClientWithOpts(docker.FromEnv)
+	require.NoError(t, err)
+	defer cli.Close()
+
+	containerName := "w1"
+	containerId := "34cd9ec936b2"
+
+	id, err := getContainerIdByName(cli, containerName)
+	t.Log(id)
+	require.NoError(t, err)
+	require.NotEqual(t, containerName, id)
+
+	id, err = getContainerIdByName(cli, containerName)
+	t.Log(id)
+	require.NoError(t, err)
+	b := strings.HasPrefix(id, containerId)
+	require.Equal(t, true, b)
 }
 
 func TestRandString(t *testing.T) {

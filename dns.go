@@ -42,7 +42,9 @@ func (dns *DNSServer) addWeaveDNS(containerId, cip, fqdn string, external bool) 
 
 	checkAlive := true
 	if external {
-		containerId = "weave:extern"
+		if containerId != "weave:extern" && containerId != "weave:expose" {
+			containerId = "weave:extern"
+		}
 		// if this dns is an external one, ignore checking alive
 		checkAlive = false
 	}

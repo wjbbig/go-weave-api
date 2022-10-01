@@ -48,7 +48,7 @@ type Weave struct {
 	enableProxy          bool
 	discovery            bool
 	disableFastDP        bool
-	NoMultiRouter        bool
+	noMultiRouter        bool
 	logLevel             string
 	token                string
 	peers                []string
@@ -162,6 +162,14 @@ func (w *Weave) Connect(replace bool, peer ...string) error {
 	return nil
 }
 
+func (w *Weave) SetupCNI() error {
+	return w.Setup()
+}
+
+func (w *Weave) Setup() error {
+	return w.cni.installCNIPlugin()
+}
+
 func (w *Weave) Forget(peer ...string) error {
 	values := url.Values{"peer": peer}
 	_, err := callWeave(http.MethodPost, fmt.Sprintf("http://%s:%d/forget", w.address, w.httpPort),
@@ -234,7 +242,7 @@ func (w *Weave) createWeaveContainer() (string, error) {
 	if w.ipAllocDefaultSubnet != "" {
 		containerCmds = append(containerCmds, "--ipalloc-default-subnet", w.ipAllocDefaultSubnet)
 	}
-	if w.NoMultiRouter {
+	if w.noMultiRouter {
 		containerCmds = append(containerCmds, "--no-multicast-route")
 	}
 	if w.tlsVerify {
@@ -255,11 +263,13 @@ func (w *Weave) createWeaveContainer() (string, error) {
 		)
 	}
 
+	containerCmds = append(containerCmds, w.peers...)
 	resp, err := w.dockerCli.ContainerCreate(context.Background(), &container.Config{
 		Image: fmt.Sprintf("weaveworks/weave:%s", w.version),
 		Env: []string{
 			fmt.Sprintf("WEAVE_PASSWORD=%s", w.password),
 			fmt.Sprintf("EXEC_IMAGE=weaveworks/weaveexec:%s", w.version),
+			fmt.Sprintf("WEAVE_HTTP_ADDR=%s", httpAddr),
 		},
 		Cmd: containerCmds,
 	}, &container.HostConfig{

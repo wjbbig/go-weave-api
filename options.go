@@ -115,6 +115,6 @@ func NoDNS() Option {
 
 func NoMulticastRoute() Option {
 	return func(weave *Weave) {
-		weave.NoMultiRouter = true
+		weave.noMultiRouter = true
 	}
 }
