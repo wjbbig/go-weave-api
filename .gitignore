@@ -12,3 +12,5 @@ gen
 vendor/
 certs
 scripts
+common_test.go
+weave
