@@ -89,3 +89,19 @@ func TestWeave_LookupDNS(t *testing.T) {
 
 	t.Log(result)
 }
+
+func TestDNSResolvConfPath(t *testing.T) {
+	w, err := NewWeaveNode("127.0.0.1")
+	require.NoError(t, err)
+	defer w.Close()
+
+	result, err := w.runRemoteCmdWithContainer("readlink", "-f", "/host/etc/resolv.conf")
+	require.NoError(t, err)
+	i := 0
+	for ; i < len(result); i++ {
+		if string(result[i]) == "/" {
+			break
+		}
+	}
+	t.Log(string(result[i:]))
+}

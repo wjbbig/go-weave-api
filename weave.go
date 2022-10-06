@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,10 @@ type Weave struct {
 	clientTLS            *tlsCerts
 	containerID          string
 	address              string
+	host                 string
+	resume               bool
+	noDNS                bool
+	withoutDNS           bool
 	httpPort             int
 	statusPort           int
 	port                 int
@@ -39,16 +44,26 @@ type Weave struct {
 	local                bool
 	version              string
 	tlsVerify            bool
+	ipAllocInit          string
 	ipRange              string
 	ipAllocDefaultSubnet string
+	noDefaultIpAlloc     bool
+	noRewriteHost        bool
 	dockerPort           int
 	nickname             string
+	name                 string
 	restartPolicy        string
 	enablePlugin         bool
 	enableProxy          bool
 	discovery            bool
 	disableFastDP        bool
 	noMultiRouter        bool
+	hostnameFromLabel    string
+	hostnameMatch        string
+	rewriteInspect       bool
+	hostnameReplacement  string
+	mtu                  int
+	trustedSubnets       string
 	logLevel             string
 	token                string
 	peers                []string
@@ -63,6 +78,7 @@ type tlsCerts struct {
 func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 	nickname := randString()
 	w := &Weave{
+		dns:           &DNSServer{Search: "weave.local"},
 		address:       address,
 		port:          weavePort,
 		httpPort:      weaveHttpPort,
@@ -102,7 +118,14 @@ func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 	if err := w.checkOverlap(w.ipRange, "weave"); err != nil {
 		return nil, err
 	}
+	if !w.dns.Disabled && w.dns.Address == "" {
+		result, err := w.runWeaveExec("bridge-ip", "weave")
+		if err != nil {
+			return nil, err
+		}
 
+		w.dns.Address = fmt.Sprintf("%s:53", string(result))
+	}
 	w.cni = NewCNIBuilder(w.dockerCli, w.version)
 	return w, nil
 }
@@ -186,83 +209,13 @@ func (w *Weave) startWeaveContainer() error {
 		return err
 	}
 
-	//statusCh, errCh := w.dockerCli.ContainerWait(context.Background(), w.containerID, container.WaitConditionNotRunning)
-	//select {
-	//case err := <-errCh:
-	//	return errors.Errorf("weave container start failed, err=%s", err.Error())
-	//case <-statusCh:
-	//}
-
 	return nil
 }
 
 func (w *Weave) createWeaveContainer() (string, error) {
 	httpAddr := fmt.Sprintf("0.0.0.0:%d", w.httpPort)
-	statusAddr := fmt.Sprintf("0.0.0.0:%d", w.statusPort)
 
-	var containerCmds []string
-	var containerMounts []mount.Mount
-
-	containerCmds = []string{
-		"--port", strconv.Itoa(w.port),
-		"--nickname", w.nickname,
-		"--host-root=/host",
-		"--weave-bridge", "weave",
-		"--datapath", "datapath",
-		"--ipalloc-range", w.ipRange,
-		"--dns-listen-address", w.dns.Address,
-		"--http-addr", httpAddr,
-		"--status-addr", statusAddr,
-		"--resolv-conf", "/var/run/weave/etc/resolv.conf",
-		"--docker-bridge", "docker0",
-		"-H", "unix:///var/run/weave/weave.sock",
-	}
-
-	containerMounts = []mount.Mount{
-		{Type: mount.TypeBind, Source: "/var/run/docker.sock", Target: "/var/run/docker.sock"},
-		{Type: mount.TypeBind, Source: "/var/run/weave", Target: "/var/run/weave"},
-		{Type: mount.TypeBind, Source: "/run/docker/plugins", Target: "/run/docker/plugins"},
-		{Type: mount.TypeBind, Source: "/etc", Target: "/host/etc"},
-		{Type: mount.TypeBind, Source: "/var/lib/dbus", Target: "/host/var/lib/dbus"},
-		{Type: mount.TypeBind, Source: "/etc", Target: "/var/run/weave/etc"},
-	}
-
-	if w.enablePlugin {
-		containerCmds = append(containerCmds, "--plugin")
-	}
-	if w.enableProxy {
-		containerCmds = append(containerCmds, "--proxy")
-	}
-	if w.dns.Disabled {
-		containerCmds = append(containerCmds, "--no-dns")
-	}
-	if !w.discovery {
-		containerCmds = append(containerCmds, "--no-discovery")
-	}
-	if w.ipAllocDefaultSubnet != "" {
-		containerCmds = append(containerCmds, "--ipalloc-default-subnet", w.ipAllocDefaultSubnet)
-	}
-	if w.noMultiRouter {
-		containerCmds = append(containerCmds, "--no-multicast-route")
-	}
-	if w.tlsVerify {
-		containerCmds = append(containerCmds, "--tlsverify",
-			"--tlscacert", "/home/weave/tls/ca.pem",
-			"--tlscert", "/home/weave/tls/cert.pem",
-			"--tlskey", "/home/weave/tls/key.pem",
-		)
-
-		tls, err := w.getDockerTLSArgs()
-		if err != nil {
-			return "", err
-		}
-		containerMounts = append(containerMounts,
-			mount.Mount{Type: mount.TypeBind, Source: tls.cacertPath, Target: "/home/weave/tls/ca.pem"},
-			mount.Mount{Type: mount.TypeBind, Source: tls.certPath, Target: "/home/weave/tls/cert.pem"},
-			mount.Mount{Type: mount.TypeBind, Source: tls.keyPath, Target: "/home/weave/tls/key.pem"},
-		)
-	}
-
+	containerCmds, containerMounts, err := w.collectCmdsAndMounts()
 	containerCmds = append(containerCmds, w.peers...)
 	resp, err := w.dockerCli.ContainerCreate(context.Background(), &container.Config{
 		Image: fmt.Sprintf("weaveworks/weave:%s", w.version),
@@ -491,6 +444,11 @@ func (w *Weave) createWeaveExecContainer(cmd ...string) ([]byte, error) {
 				Source: "/var/run/docker.sock",
 				Target: "/var/run/docker.sock",
 			},
+			{
+				Type:   mount.TypeBind,
+				Source: "/",
+				Target: "/host/",
+			},
 		},
 	}, nil, nil, "")
 	if err != nil {
@@ -524,6 +482,141 @@ func (w *Weave) createWeaveExecContainer(cmd ...string) ([]byte, error) {
 		Force:         true,
 	})
 	return data, nil
+}
+
+func (w *Weave) collectCmdsAndMounts() ([]string, []mount.Mount, error) {
+	httpAddr := fmt.Sprintf("0.0.0.0:%d", w.httpPort)
+	statusAddr := fmt.Sprintf("0.0.0.0:%d", w.statusPort)
+
+	var containerCmds []string
+	var containerMounts []mount.Mount
+
+	resolvConfPath, err := w.getRemoteResolvConfPath()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resolvConfDir, resolvConfName := filepath.Split(resolvConfPath)
+
+	containerCmds = []string{
+		"--port", strconv.Itoa(w.port),
+		"--nickname", w.nickname,
+		"--host-root=/host",
+		"--weave-bridge", "weave",
+		"--datapath", "datapath",
+		"--ipalloc-range", w.ipRange,
+		"--dns-listen-address", w.dns.Address,
+		"--http-addr", httpAddr,
+		"--status-addr", statusAddr,
+		"--resolv-conf", fmt.Sprintf("/var/run/weave/etc/%s", resolvConfName),
+		"--docker-bridge", "docker0",
+		"-H", "unix:///var/run/weave/weave.sock",
+		fmt.Sprintf("--log-level=%s", w.logLevel),
+	}
+
+	if w.enablePlugin {
+		containerCmds = append(containerCmds, "--plugin")
+	}
+	if w.trustedSubnets != "" {
+		containerCmds = append(containerCmds, "--trusted-subnets", w.trustedSubnets)
+	}
+	if w.name != "" {
+		containerCmds = append(containerCmds, "--name", w.name)
+	}
+	if w.host != "" {
+		containerCmds = append(containerCmds, "--host", w.host)
+	}
+	if w.noRewriteHost {
+		containerCmds = append(containerCmds, "--no-rewrite-hosts")
+	}
+	if w.rewriteInspect {
+		containerCmds = append(containerCmds, "--rewrite-inspect")
+	}
+	if w.noDefaultIpAlloc {
+		containerCmds = append(containerCmds, "--no-default-ipalloc")
+	}
+	if w.enableProxy {
+		containerCmds = append(containerCmds, "--proxy")
+	}
+	if w.dns.Disabled {
+		containerCmds = append(containerCmds, "--no-dns")
+	}
+	if w.withoutDNS {
+		containerCmds = append(containerCmds, "--without-dns")
+	}
+	if !w.discovery {
+		containerCmds = append(containerCmds, "--no-discovery")
+	}
+	if w.ipAllocDefaultSubnet != "" {
+		containerCmds = append(containerCmds, "--ipalloc-default-subnet", w.ipAllocDefaultSubnet)
+	}
+	if w.ipAllocInit != "" {
+		containerCmds = append(containerCmds, "--ipalloc-init", w.ipAllocInit)
+	}
+	if w.noMultiRouter {
+		containerCmds = append(containerCmds, "--no-multicast-route")
+	}
+	if w.hostnameMatch != "" {
+		containerCmds = append(containerCmds, "--hostname-match", w.hostnameMatch)
+	}
+	if w.hostnameReplacement != "" {
+		containerCmds = append(containerCmds, "--hostname-replacement", w.hostnameReplacement)
+	}
+	if w.hostnameFromLabel != "" {
+		containerCmds = append(containerCmds, "--hostname-from-label", w.hostnameFromLabel)
+	}
+	if w.token != "" {
+		containerCmds = append(containerCmds, "--token", w.token)
+	}
+	if w.disableFastDP {
+		containerCmds = append(containerCmds, "--no-fastdp")
+	}
+	if w.mtu > 0 {
+		containerCmds = append(containerCmds, "--mtu", strconv.Itoa(w.mtu))
+	}
+
+	if w.tlsVerify {
+		containerCmds = append(containerCmds, "--tlsverify",
+			"--tlscacert", "/home/weave/tls/ca.pem",
+			"--tlscert", "/home/weave/tls/cert.pem",
+			"--tlskey", "/home/weave/tls/key.pem",
+		)
+
+		tls, err := w.getDockerTLSArgs()
+		if err != nil {
+			return nil, nil, err
+		}
+		containerMounts = append(containerMounts,
+			mount.Mount{Type: mount.TypeBind, Source: tls.cacertPath, Target: "/home/weave/tls/ca.pem"},
+			mount.Mount{Type: mount.TypeBind, Source: tls.certPath, Target: "/home/weave/tls/cert.pem"},
+			mount.Mount{Type: mount.TypeBind, Source: tls.keyPath, Target: "/home/weave/tls/key.pem"},
+		)
+	}
+
+	containerMounts = []mount.Mount{
+		{Type: mount.TypeBind, Source: "/var/run/docker.sock", Target: "/var/run/docker.sock"},
+		{Type: mount.TypeBind, Source: "/var/run/weave", Target: "/var/run/weave"},
+		{Type: mount.TypeBind, Source: "/run/docker/plugins", Target: "/run/docker/plugins"},
+		{Type: mount.TypeBind, Source: "/etc", Target: "/host/etc"},
+		{Type: mount.TypeBind, Source: "/var/lib/dbus", Target: "/host/var/lib/dbus"},
+		{Type: mount.TypeBind, Source: resolvConfDir, Target: "/var/run/weave/etc"},
+	}
+
+	return containerCmds, containerMounts, nil
+}
+
+func (w *Weave) getRemoteResolvConfPath() (string, error) {
+	result, err := w.runRemoteCmdWithContainer("readlink", "-f", "/host/etc/resolv.conf")
+	if err != nil {
+		return "", err
+	}
+	i := 0
+	for ; i < len(result); i++ {
+		if string(result[i]) == "/" {
+			break
+		}
+	}
+	return string(result[i:]), nil
 }
 
 func (w *Weave) Close() error {

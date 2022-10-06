@@ -8,6 +8,24 @@ func WithPlugin() Option {
 	}
 }
 
+func WithWeaveMtu(mtu int) Option {
+	return func(weave *Weave) {
+		weave.mtu = mtu
+	}
+}
+
+func WithResume() Option {
+	return func(weave *Weave) {
+		weave.resume = true
+	}
+}
+
+func WithHost(host string) Option {
+	return func(weave *Weave) {
+		weave.host = host
+	}
+}
+
 func WithLogLevel(level string) Option {
 	return func(weave *Weave) {
 		weave.logLevel = level
@@ -23,6 +41,12 @@ func WithToken(token string) Option {
 func WithProxy() Option {
 	return func(weave *Weave) {
 		weave.enableProxy = true
+	}
+}
+
+func WithName(name string) Option {
+	return func(weave *Weave) {
+		weave.name = name
 	}
 }
 
@@ -82,12 +106,43 @@ func WithVersion(version string) Option {
 
 func WithDNSAddress(address string) Option {
 	return func(weave *Weave) {
-		if weave.dns == nil {
-			weave.dns = NewDNSServer(address, "weave.local.", false)
-			weave.dns.weave = weave
-			return
-		}
 		weave.dns.Address = address
+	}
+}
+
+func WithHostnameFromLabel(labelKey string) Option {
+	return func(weave *Weave) {
+		weave.hostnameFromLabel = labelKey
+	}
+}
+
+func WithHostnameMatch(match string) Option {
+	return func(weave *Weave) {
+		weave.hostnameMatch = match
+	}
+}
+
+func WithHostnameReplacement(replacement string) Option {
+	return func(weave *Weave) {
+		weave.hostnameReplacement = replacement
+	}
+}
+
+func WithPeers(peers ...string) Option {
+	return func(weave *Weave) {
+		weave.peers = peers
+	}
+}
+
+func WithoutDNS() Option {
+	return func(weave *Weave) {
+		weave.withoutDNS = true
+	}
+}
+
+func WithTrustedSubnets(cidrs string) Option {
+	return func(weave *Weave) {
+		weave.trustedSubnets = cidrs
 	}
 }
 
@@ -116,5 +171,11 @@ func NoDNS() Option {
 func NoMulticastRoute() Option {
 	return func(weave *Weave) {
 		weave.noMultiRouter = true
+	}
+}
+
+func NoFastdp() Option {
+	return func(weave *Weave) {
+		weave.disableFastDP = true
 	}
 }
