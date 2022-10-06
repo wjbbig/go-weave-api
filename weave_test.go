@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestRunWeaveExec(t *testing.T) {
@@ -104,4 +105,26 @@ func TestDNSResolvConfPath(t *testing.T) {
 		}
 	}
 	t.Log(string(result[i:]))
+}
+
+func TestWeave_Launch(t *testing.T) {
+	w, err := NewWeaveNode("127.0.0.1", WithPlugin(), WithProxy(), WithHttpPort(8082))
+	require.NoError(t, err)
+	defer w.Close()
+
+	err = w.Launch()
+	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	resp, err := w.dockerCli.ContainerInspect(context.Background(), "weave")
+	require.NoError(t, err)
+	require.Equal(t, "running", resp.State.Status)
+
+	status, err := w.Status()
+	require.NoError(t, err)
+	t.Log(status.Overview)
+
+	err = w.Stop()
+	require.NoError(t, err)
 }

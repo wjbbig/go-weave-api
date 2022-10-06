@@ -8,6 +8,18 @@ func WithPlugin() Option {
 	}
 }
 
+func WithHttpPort(port int) Option {
+	return func(weave *Weave) {
+		weave.httpPort = port
+	}
+}
+
+func WithStatusPort(port int) Option {
+	return func(weave *Weave) {
+		weave.statusPort = port
+	}
+}
+
 func WithWeaveMtu(mtu int) Option {
 	return func(weave *Weave) {
 		weave.mtu = mtu

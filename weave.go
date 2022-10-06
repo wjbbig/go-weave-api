@@ -119,12 +119,16 @@ func NewWeaveNode(address string, opts ...Option) (*Weave, error) {
 		return nil, err
 	}
 	if !w.dns.Disabled && w.dns.Address == "" {
-		result, err := w.runWeaveExec("bridge-ip", "weave")
+		//result, err := w.runWeaveExec("bridge-ip", "docker0")
+		//if err != nil {
+		//	return nil, err
+		//}
+		resp, err := w.dockerCli.NetworkInspect(context.Background(), "bridge", types.NetworkInspectOptions{})
 		if err != nil {
 			return nil, err
 		}
 
-		w.dns.Address = fmt.Sprintf("%s:53", string(result))
+		w.dns.Address = fmt.Sprintf("%s:53", resp.IPAM.Config[0].Gateway)
 	}
 	w.cni = NewCNIBuilder(w.dockerCli, w.version)
 	return w, nil
@@ -599,7 +603,8 @@ func (w *Weave) collectCmdsAndMounts() ([]string, []mount.Mount, error) {
 		{Type: mount.TypeBind, Source: "/run/docker/plugins", Target: "/run/docker/plugins"},
 		{Type: mount.TypeBind, Source: "/etc", Target: "/host/etc"},
 		{Type: mount.TypeBind, Source: "/var/lib/dbus", Target: "/host/var/lib/dbus"},
-		{Type: mount.TypeBind, Source: resolvConfDir, Target: "/var/run/weave/etc"},
+		{Type: mount.TypeBind, Source: resolvConfDir[5:], Target: "/var/run/weave/etc"},
+		//{Type: mount.TypeBind, Source: "/", Target: "/host"},
 	}
 
 	return containerCmds, containerMounts, nil
